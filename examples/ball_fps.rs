@@ -21,8 +21,14 @@ fn main() {
             toggle_grab.run_if(input_just_released(KeyCode::Escape)),
             // move player in the direction they are looking
             player_move.after(player_look),
+            // spawn balls when a ball event happens
+            spawn_ball,
+            // run before spawning ball to prevent potential frame of lag.
+            // run before focus events so when we click back in we don't hide the curser before we check the click
+            shoot_ball.before(spawn_ball).before(focus_events),
         ),
     );
+    app.add_event::<BallSpawn>();
     app.add_observer(apply_grab);
     app.run();
 }
@@ -149,4 +155,41 @@ fn player_move(
     let mut to_move = forward + left;
     to_move.y = 0.;
     player.translation += to_move.normalize_or_zero() * time.delta_secs() * SPEED;
+}
+
+#[derive(Event)]
+struct BallSpawn {
+    position: Vec3,
+}
+
+fn spawn_ball(
+    mut events: EventReader<BallSpawn>,
+    mut commands: Commands,
+    mut mesh_assets: ResMut<Assets<Mesh>>,
+    mut material_assets: ResMut<Assets<StandardMaterial>>,
+) {
+    for spawn in events.read() {
+        commands.spawn((
+            Transform::from_translation(spawn.position),
+            Mesh3d(mesh_assets.add(Sphere::new(1.))),
+            MeshMaterial3d(material_assets.add(StandardMaterial::default())),
+        ));
+    }
+}
+
+fn shoot_ball(
+    inputs: Res<ButtonInput<MouseButton>>,
+    player: Single<&Transform, With<Player>>,
+    mut spawner: EventWriter<BallSpawn>,
+    window: Single<&Window, With<PrimaryWindow>>,
+) {
+    if window.cursor_options.visible {
+        return;
+    }
+    if !inputs.just_pressed(MouseButton::Left) {
+        return;
+    }
+    spawner.write(BallSpawn {
+        position: player.translation,
+    });
 }
