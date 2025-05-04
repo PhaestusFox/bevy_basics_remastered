@@ -9,3 +9,8 @@ rand = "*"
 
 [profile.dev.package."*"]
 opt-level = 3
+
+[[example]]
+name = "ball fps"
+path = "examples/ball_fps"
+doc-scrape-examples = true
