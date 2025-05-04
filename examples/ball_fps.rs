@@ -4,6 +4,8 @@ use bevy::{
     window::{CursorGrabMode, PrimaryWindow, WindowFocused},
 };
 
+const SPEED: f32 = 50.;
+
 fn main() {
     let mut app = App::new();
     app.add_plugins(DefaultPlugins);
@@ -17,6 +19,8 @@ fn main() {
             focus_events,
             // toggle focus when you press escape - shows of run conditions
             toggle_grab.run_if(input_just_released(KeyCode::Escape)),
+            // move player in the direction they are looking
+            player_move.after(player_look),
         ),
     );
     app.add_observer(apply_grab);
@@ -116,4 +120,33 @@ fn focus_events(mut events: EventReader<WindowFocused>, mut commands: Commands) 
 fn toggle_grab(mut window: Single<&mut Window, With<PrimaryWindow>>, mut commands: Commands) {
     window.focused = !window.focused;
     commands.trigger(GrabEvent(window.focused));
+}
+
+fn player_move(
+    // need access to player
+    mut player: Single<&mut Transform, With<Player>>,
+    // need access to keyboard inputs
+    inputs: Res<ButtonInput<KeyCode>>,
+    // need delta time to update position consistently even during lag or non 60 fps
+    time: Res<Time>,
+) {
+    let mut delta = Vec3::ZERO;
+    if inputs.pressed(KeyCode::KeyA) {
+        delta.x -= 1.;
+    }
+    if inputs.pressed(KeyCode::KeyD) {
+        delta.x += 1.;
+    }
+    if inputs.pressed(KeyCode::KeyW) {
+        delta.z += 1.;
+    }
+    if inputs.pressed(KeyCode::KeyS) {
+        delta.z -= 1.;
+    }
+
+    let forward = player.forward().as_vec3() * delta.z;
+    let left = player.right().as_vec3() * delta.x;
+    let mut to_move = forward + left;
+    to_move.y = 0.;
+    player.translation += to_move.normalize_or_zero() * time.delta_secs() * SPEED;
 }
