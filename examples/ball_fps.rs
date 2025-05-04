@@ -1,10 +1,25 @@
-use bevy::{input::mouse::AccumulatedMouseMotion, prelude::*};
+use bevy::{
+    input::{common_conditions::input_just_released, mouse::AccumulatedMouseMotion},
+    prelude::*,
+    window::{CursorGrabMode, PrimaryWindow, WindowFocused},
+};
 
 fn main() {
     let mut app = App::new();
     app.add_plugins(DefaultPlugins);
     app.add_systems(Startup, (spawn_map, spawn_camera));
-    app.add_systems(Update, player_look);
+    app.add_systems(
+        Update,
+        (
+            // make the player look around
+            player_look,
+            // look for winit focus/unfocused events
+            focus_events,
+            // toggle focus when you press escape - shows of run conditions
+            toggle_grab.run_if(input_just_released(KeyCode::Escape)),
+        ),
+    );
+    app.add_observer(apply_grab);
     app.run();
 }
 
@@ -46,12 +61,19 @@ fn player_look(
     mouse_movement: Res<AccumulatedMouseMotion>,
     // use delta time so mouse is consistent even when game is slow or at non 60 fps
     time: Res<Time>,
+    // use window to check if we should let the player look or not
+    window: Single<&Window, With<PrimaryWindow>>,
 ) {
     // if using MouseMotion events need to accumulate them
     // let delta = mouse_motion.read().map(|e| e.delta).sum();
 
-    // just set to 0.1 for now
-    let sensitivity = 0.1;
+    // if window is not focused don't let player look
+    if !window.focused {
+        return;
+    }
+
+    // change to use 100. divided by min width and hight, this will make the game feel the same even on different resolutions
+    let sensitivity = 100. / window.width().min(window.height());
 
     //get angles as euler angles because they are more natural then Quats, don't need role
     let (mut yaw, mut pitch, _) = player.rotation.to_euler(EulerRot::YXZ);
@@ -66,4 +88,32 @@ fn player_look(
 
     // recalculate the Quat from the yaw and pitch, yaw first or we end up with unintended role
     player.rotation = Quat::from_euler(EulerRot::YXZ, yaw, pitch, 0.);
+}
+
+#[derive(Event, Deref)]
+struct GrabEvent(bool);
+
+fn apply_grab(
+    // tells bevy what event to watch for with this observer
+    grab: Trigger<GrabEvent>,
+    mut window: Single<&mut Window, With<PrimaryWindow>>,
+) {
+    if **grab {
+        window.cursor_options.visible = false;
+        window.cursor_options.grab_mode = CursorGrabMode::Locked
+    } else {
+        window.cursor_options.visible = true;
+        window.cursor_options.grab_mode = CursorGrabMode::None;
+    }
+}
+
+fn focus_events(mut events: EventReader<WindowFocused>, mut commands: Commands) {
+    if let Some(event) = events.read().last() {
+        commands.trigger(GrabEvent(event.focused));
+    }
+}
+
+fn toggle_grab(mut window: Single<&mut Window, With<PrimaryWindow>>, mut commands: Commands) {
+    window.focused = !window.focused;
+    commands.trigger(GrabEvent(window.focused));
 }
