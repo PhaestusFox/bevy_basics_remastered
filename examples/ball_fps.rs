@@ -5,6 +5,8 @@ use bevy::{
 };
 
 const SPEED: f32 = 50.;
+// 9.8 is earth gravity and div 30 because 30 steps per second
+const GRAVITY: Vec3 = Vec3::new(0., -9.8 / 30., 0.);
 
 fn main() {
     let mut app = App::new();
@@ -33,8 +35,12 @@ fn main() {
     app.insert_resource(Time::<Fixed>::from_hz(30.));
     app.add_systems(
         FixedUpdate,
-        // move every entity with a velocity by that amount
-        apply_velocity,
+        (
+            // move every entity with a velocity by that amount
+            apply_velocity,
+            // run before velocity for consistancey between frames,
+            apply_gravity.before(apply_velocity),
+        ),
     );
     app.add_event::<BallSpawn>();
     app.init_resource::<BallData>();
@@ -239,11 +245,20 @@ impl FromWorld for BallData {
     }
 }
 
-#[derive(Component)]
+#[derive(Component, Deref, DerefMut)]
 struct Velocity(Vec3);
 
 fn apply_velocity(mut objects: Query<(&mut Transform, &Velocity)>, time: Res<Time>) {
     for (mut transform, velocity) in &mut objects {
+        // use delta time because we set velocity outside of fixed update
+        // if we did not used delta time then anything touching velocity would need to make sure it is scaled correctly
         transform.translation += velocity.0 * time.delta_secs();
+    }
+}
+
+// no need for delta time because it is fixed at 1/30
+fn apply_gravity(mut objects: Query<&mut Velocity>) {
+    for mut velocity in &mut objects {
+        velocity.0 += GRAVITY;
     }
 }
