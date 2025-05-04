@@ -29,6 +29,7 @@ fn main() {
         ),
     );
     app.add_event::<BallSpawn>();
+    app.init_resource::<BallData>();
     app.add_observer(apply_grab);
     app.run();
 }
@@ -37,23 +38,17 @@ fn spawn_camera(mut commands: Commands) {
     commands.spawn((Camera3d::default(), Player));
 }
 
-fn spawn_map(
-    mut commands: Commands,
-    mut mesh_assets: ResMut<Assets<Mesh>>,
-    mut material_assets: ResMut<Assets<StandardMaterial>>,
-) {
+fn spawn_map(mut commands: Commands, ball_data: Res<BallData>) {
     commands.spawn(DirectionalLight::default());
-    let ball_mesh = mesh_assets.add(Sphere::new(1.));
-    for h in 0..16 {
-        let color = Color::hsl((h as f32 / 16.) * 360., 1., 0.5);
-        let ball_material = material_assets.add(StandardMaterial {
-            base_color: color,
-            ..Default::default()
-        });
+    for h in 0..ball_data.materials.len() {
         commands.spawn((
-            Transform::from_translation(Vec3::new((-8. + h as f32) * 2., 0., -50.0)),
-            Mesh3d(ball_mesh.clone()),
-            MeshMaterial3d(ball_material),
+            Transform::from_translation(Vec3::new(
+                (-(ball_data.materials.len() as f32) * 0.5 + h as f32) * 2.,
+                0.,
+                -50.0,
+            )),
+            Mesh3d(ball_data.mesh()),
+            MeshMaterial3d(ball_data.materials[h].clone()),
         ));
     }
 }
@@ -165,14 +160,13 @@ struct BallSpawn {
 fn spawn_ball(
     mut events: EventReader<BallSpawn>,
     mut commands: Commands,
-    mut mesh_assets: ResMut<Assets<Mesh>>,
-    mut material_assets: ResMut<Assets<StandardMaterial>>,
+    ball_data: Res<BallData>,
 ) {
     for spawn in events.read() {
         commands.spawn((
             Transform::from_translation(spawn.position),
-            Mesh3d(mesh_assets.add(Sphere::new(1.))),
-            MeshMaterial3d(material_assets.add(StandardMaterial::default())),
+            Mesh3d(ball_data.mesh()),
+            MeshMaterial3d(ball_data.material()),
         ));
     }
 }
@@ -192,4 +186,44 @@ fn shoot_ball(
     spawner.write(BallSpawn {
         position: player.translation,
     });
+}
+
+#[derive(Resource)]
+struct BallData {
+    mesh: Handle<Mesh>,
+    materials: Vec<Handle<StandardMaterial>>,
+    rng: std::sync::Mutex<rand::rngs::StdRng>,
+}
+
+impl BallData {
+    fn mesh(&self) -> Handle<Mesh> {
+        self.mesh.clone()
+    }
+    fn material(&self) -> Handle<StandardMaterial> {
+        use rand::seq::SliceRandom;
+        let mut rng = self.rng.lock().unwrap();
+        self.materials.choose(&mut *rng).unwrap().clone()
+    }
+}
+
+impl FromWorld for BallData {
+    fn from_world(world: &mut World) -> Self {
+        use rand::SeedableRng;
+        let mesh = world.resource_mut::<Assets<Mesh>>().add(Sphere::new(1.));
+        let mut materials = Vec::new();
+        let mut material_assets = world.resource_mut::<Assets<StandardMaterial>>();
+        for i in 0..36 {
+            let color = Color::hsl((i * 10) as f32, 1., 0.5);
+            materials.push(material_assets.add(StandardMaterial {
+                base_color: color,
+                ..Default::default()
+            }));
+        }
+        let seed = *b"PhaestusFoxBevyBasicsRemastered0";
+        BallData {
+            mesh,
+            materials,
+            rng: std::sync::Mutex::new(rand::rngs::StdRng::from_seed(seed)),
+        }
+    }
 }
