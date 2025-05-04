@@ -40,6 +40,7 @@ fn main() {
             apply_velocity,
             // run before velocity for consistancey between frames,
             apply_gravity.before(apply_velocity),
+            bounce.after(apply_velocity),
         ),
     );
     app.add_event::<BallSpawn>();
@@ -260,5 +261,13 @@ fn apply_velocity(mut objects: Query<(&mut Transform, &Velocity)>, time: Res<Tim
 fn apply_gravity(mut objects: Query<&mut Velocity>) {
     for mut velocity in &mut objects {
         velocity.0 += GRAVITY;
+    }
+}
+
+fn bounce(mut balls: Query<(&Transform, &mut Velocity)>) {
+    for (transform, mut velocity) in &mut balls {
+        if transform.translation.y < 0. && velocity.y < 0. {
+            velocity.y *= -1.;
+        }
     }
 }
