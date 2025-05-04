@@ -28,6 +28,14 @@ fn main() {
             shoot_ball.before(spawn_ball).before(focus_events),
         ),
     );
+    // set a fixed update for physics of 30 fps
+    // technically things like acceleration don't word correctly if you use a variable delta
+    app.insert_resource(Time::<Fixed>::from_hz(30.));
+    app.add_systems(
+        FixedUpdate,
+        // move every entity with a velocity by that amount
+        apply_velocity,
+    );
     app.add_event::<BallSpawn>();
     app.init_resource::<BallData>();
     app.add_observer(apply_grab);
@@ -155,6 +163,7 @@ fn player_move(
 #[derive(Event)]
 struct BallSpawn {
     position: Vec3,
+    velocity: Vec3,
 }
 
 fn spawn_ball(
@@ -167,6 +176,7 @@ fn spawn_ball(
             Transform::from_translation(spawn.position),
             Mesh3d(ball_data.mesh()),
             MeshMaterial3d(ball_data.material()),
+            Velocity(spawn.velocity),
         ));
     }
 }
@@ -185,6 +195,7 @@ fn shoot_ball(
     }
     spawner.write(BallSpawn {
         position: player.translation,
+        velocity: player.forward().as_vec3() * 15.,
     });
 }
 
@@ -225,5 +236,14 @@ impl FromWorld for BallData {
             materials,
             rng: std::sync::Mutex::new(rand::rngs::StdRng::from_seed(seed)),
         }
+    }
+}
+
+#[derive(Component)]
+struct Velocity(Vec3);
+
+fn apply_velocity(mut objects: Query<(&mut Transform, &Velocity)>, time: Res<Time>) {
+    for (mut transform, velocity) in &mut objects {
+        transform.translation += velocity.0 * time.delta_secs();
     }
 }
