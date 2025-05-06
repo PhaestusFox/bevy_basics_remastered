@@ -171,6 +171,7 @@ fn player_move(
 struct BallSpawn {
     position: Vec3,
     velocity: Vec3,
+    power: f32,
 }
 
 fn spawn_ball(
@@ -183,7 +184,7 @@ fn spawn_ball(
             Transform::from_translation(spawn.position),
             Mesh3d(ball_data.mesh()),
             MeshMaterial3d(ball_data.material()),
-            Velocity(spawn.velocity),
+            Velocity(spawn.velocity * spawn.power * 10.),
         ));
     }
 }
@@ -193,17 +194,31 @@ fn shoot_ball(
     player: Single<&Transform, With<Player>>,
     mut spawner: EventWriter<BallSpawn>,
     window: Single<&Window, With<PrimaryWindow>>,
+    mut power: Local<Option<f32>>,
+    time: Res<Time>,
 ) {
     if window.cursor_options.visible {
         return;
     }
-    if !inputs.just_pressed(MouseButton::Left) {
-        return;
+
+    if let Some(current) = power.as_mut() {
+        if inputs.just_released(MouseButton::Left) {
+            spawner.write(BallSpawn {
+                position: player.translation,
+                velocity: player.forward().as_vec3(),
+                power: *current,
+            });
+        }
+        if inputs.pressed(MouseButton::Left) {
+            *current += time.delta_secs();
+        } else {
+            *power = None;
+        }
     }
-    spawner.write(BallSpawn {
-        position: player.translation,
-        velocity: player.forward().as_vec3() * 15.,
-    });
+
+    if inputs.just_pressed(MouseButton::Left) {
+        *power = Some(1.);
+    }
 }
 
 #[derive(Resource)]
