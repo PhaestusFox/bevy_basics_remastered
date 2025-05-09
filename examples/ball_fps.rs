@@ -8,6 +8,10 @@ const SPEED: f32 = 50.;
 // 9.8 is earth gravity and div 30 because 30 steps per second
 const GRAVITY: Vec3 = Vec3::new(0., -9.8 / 30., 0.);
 
+const NOT_CHARGING: Color = Color::linear_rgb(0.2, 0.2, 0.2);
+const MIN_FILL: f32 = 29.75 / 6.;
+const EMPTY_SPACE: f32 = 29.75 - MIN_FILL;
+
 fn main() {
     let mut app = App::new();
     app.add_plugins(DefaultPlugins);
@@ -28,6 +32,7 @@ fn main() {
             // run before spawning ball to prevent potential frame of lag.
             // run before focus events so when we click back in we don't hide the curser before we check the click
             shoot_ball.before(spawn_ball).before(focus_events),
+            update_power_bar,
         ),
     );
     // set a fixed update for physics of 30 fps
@@ -46,6 +51,10 @@ fn main() {
     app.add_event::<BallSpawn>();
     app.init_resource::<BallData>();
     app.add_observer(apply_grab);
+    app.insert_resource(Power {
+        charging: false,
+        current: 0.,
+    });
     app.run();
 }
 
@@ -66,6 +75,31 @@ fn spawn_map(mut commands: Commands, ball_data: Res<BallData>) {
             MeshMaterial3d(ball_data.materials[h].clone()),
         ));
     }
+    commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                width: Val::VMax(30.),
+                height: Val::VMax(5.),
+                bottom: Val::Px(20.),
+                left: Val::Px(20.),
+                ..Default::default()
+            },
+            BackgroundColor(Color::linear_rgb(0.5, 0.5, 0.5)),
+            BorderRadius::all(Val::VMax(5.)),
+        ))
+        .with_child((
+            Node {
+                position_type: PositionType::Absolute,
+                min_width: Val::VMax(MIN_FILL),
+                height: Val::Percent(95.),
+                margin: UiRect::all(Val::VMax(0.125)),
+                ..Default::default()
+            },
+            BackgroundColor(NOT_CHARGING),
+            BorderRadius::all(Val::VMax(5.)),
+            PowerBar { min: 1., max: 6. },
+        ));
 }
 
 #[derive(Component)]
@@ -194,30 +228,32 @@ fn shoot_ball(
     player: Single<&Transform, With<Player>>,
     mut spawner: EventWriter<BallSpawn>,
     window: Single<&Window, With<PrimaryWindow>>,
-    mut power: Local<Option<f32>>,
+    mut power: ResMut<Power>,
     time: Res<Time>,
 ) {
     if window.cursor_options.visible {
         return;
     }
 
-    if let Some(current) = power.as_mut() {
+    if power.charging {
         if inputs.just_released(MouseButton::Left) {
             spawner.write(BallSpawn {
                 position: player.translation,
                 velocity: player.forward().as_vec3(),
-                power: *current,
+                power: power.current,
             });
         }
         if inputs.pressed(MouseButton::Left) {
-            *current += time.delta_secs();
+            power.current += time.delta_secs();
+            power.current = power.current.clamp(1., 6.);
         } else {
-            *power = None;
+            power.charging = false;
         }
     }
 
     if inputs.just_pressed(MouseButton::Left) {
-        *power = Some(1.);
+        power.charging = true;
+        power.current = 1.;
     }
 }
 
@@ -283,6 +319,34 @@ fn bounce(mut balls: Query<(&Transform, &mut Velocity)>) {
     for (transform, mut velocity) in &mut balls {
         if transform.translation.y < 0. && velocity.y < 0. {
             velocity.y *= -1.;
+        }
+    }
+}
+
+#[derive(Resource)]
+struct Power {
+    charging: bool,
+    current: f32,
+}
+
+#[derive(Component)]
+struct PowerBar {
+    min: f32,
+    max: f32,
+}
+
+fn update_power_bar(
+    mut bars: Query<(&mut Node, &PowerBar, &mut BackgroundColor)>,
+    power: Res<Power>,
+) {
+    for (mut bar, config, mut bg) in &mut bars {
+        if !power.charging {
+            bg.0 = NOT_CHARGING;
+            bar.width = Val::VMax(MIN_FILL);
+        } else {
+            let percent = (power.current - config.min) / (config.max - config.min);
+            bg.0 = Color::linear_rgb(1. - percent, percent, 0.);
+            bar.width = Val::VMax(MIN_FILL + percent * EMPTY_SPACE);
         }
     }
 }
