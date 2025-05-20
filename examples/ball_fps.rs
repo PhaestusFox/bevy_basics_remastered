@@ -6,7 +6,7 @@ use bevy::{
 
 const SPEED: f32 = 50.;
 // 9.8 is earth gravity and div 30 because 30 steps per second
-const GRAVITY: Vec3 = Vec3::new(0., -9.8 / 30., 0.);
+const GRAVITY: Vec3 = Vec3::new(0., -9.8, 0.);
 
 const NOT_CHARGING: Color = Color::linear_rgb(0.2, 0.2, 0.2);
 const MIN_FILL: f32 = 29.75 / 6.;
@@ -309,9 +309,10 @@ fn apply_velocity(mut objects: Query<(&mut Transform, &Velocity)>, time: Res<Tim
 }
 
 // no need for delta time because it is fixed at 1/30
-fn apply_gravity(mut objects: Query<&mut Velocity>) {
+fn apply_gravity(mut objects: Query<&mut Velocity>, time: Res<Time>) {
+    let g = GRAVITY * time.delta_secs();
     for mut velocity in &mut objects {
-        velocity.0 += GRAVITY;
+        **velocity += g;
     }
 }
 
