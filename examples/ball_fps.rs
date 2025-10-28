@@ -3,6 +3,8 @@ use bevy::{
     prelude::*,
     window::{CursorGrabMode, PrimaryWindow, WindowFocused},
 };
+use bevy::window::CursorOptions;
+use rand::prelude::IndexedRandom;
 
 const SPEED: f32 = 50.;
 // 9.8 is earth gravity and div 30 because 30 steps per second
@@ -21,7 +23,7 @@ fn main() {
         (
             // make the player look around
             player_look,
-            // look for winit focus/unfocused events
+            // look for focus/unfocused events
             focus_events,
             // toggle focus when you press escape - shows of run conditions
             toggle_grab.run_if(input_just_released(KeyCode::Escape)),
@@ -43,12 +45,12 @@ fn main() {
         (
             // move every entity with a velocity by that amount
             apply_velocity,
-            // run before velocity for consistancey between frames,
+            // run before velocity for consistency between frames,
             apply_gravity.before(apply_velocity),
             bounce.after(apply_velocity),
         ),
     );
-    app.add_event::<BallSpawn>();
+    app.add_message::<BallSpawn>();
     app.init_resource::<BallData>();
     app.add_observer(apply_grab);
     app.insert_resource(Power {
@@ -108,7 +110,7 @@ struct Player;
 fn player_look(
     // should only be on player you control so use single so save unwrapping
     // if no player is found this system will not run
-    // if more then one player is found the system will also not run
+    // if more than one player is found the system will also not run
     mut player: Single<&mut Transform, With<Player>>,
     //can use raw events
     // mut mouse_motion: EventReader<bevy::input::mouse::MouseMotion>,
@@ -126,10 +128,10 @@ fn player_look(
         return;
     }
 
-    // change to use 100. divided by min width and hight, this will make the game feel the same even on different resolutions
+    // change to use 100. divided by min width and height, this will make the game feel the same even on different resolutions
     let sensitivity = 100. / window.width().min(window.height());
 
-    //get angles as euler angles because they are more natural then Quats, don't need role
+    //get angles as euler angles because they are more natural than Quats, don't need role
     let (mut yaw, mut pitch, _) = player.rotation.to_euler(EulerRot::YXZ);
     // subtract y movement for pitch - up/down
     pitch -= mouse_movement.delta.y * time.delta_secs() * sensitivity;
@@ -137,10 +139,10 @@ fn player_look(
     // subtract x movement for yaw - left/right
     yaw -= mouse_movement.delta.x * time.delta_secs() * sensitivity;
 
-    // stops you looking past straight up, it will flickering as the value becomes negative
+    // stops you looking past straight up, it will flicker as the value becomes negative
     pitch = pitch.clamp(-1.57, 1.57);
 
-    // recalculate the Quat from the yaw and pitch, yaw first or we end up with unintended role
+    // recalculate the Quat from the yaw and pitch, yaw first, or we end up with unintended role
     player.rotation = Quat::from_euler(EulerRot::YXZ, yaw, pitch, 0.);
 }
 
@@ -149,19 +151,19 @@ struct GrabEvent(bool);
 
 fn apply_grab(
     // tells bevy what event to watch for with this observer
-    grab: Trigger<GrabEvent>,
-    mut window: Single<&mut Window, With<PrimaryWindow>>,
+    grab: On<GrabEvent>,
+    mut primary_cursor_options: Single<&mut CursorOptions, With<PrimaryWindow>>
 ) {
     if **grab {
-        window.cursor_options.visible = false;
-        window.cursor_options.grab_mode = CursorGrabMode::Locked
+        primary_cursor_options.visible = false;
+        primary_cursor_options.grab_mode = CursorGrabMode::Locked
     } else {
-        window.cursor_options.visible = true;
-        window.cursor_options.grab_mode = CursorGrabMode::None;
+        primary_cursor_options.visible = true;
+        primary_cursor_options.grab_mode = CursorGrabMode::None;
     }
 }
 
-fn focus_events(mut events: EventReader<WindowFocused>, mut commands: Commands) {
+fn focus_events(mut events: MessageReader<WindowFocused>, mut commands: Commands) {
     if let Some(event) = events.read().last() {
         commands.trigger(GrabEvent(event.focused));
     }
@@ -201,7 +203,7 @@ fn player_move(
     player.translation += to_move.normalize_or_zero() * time.delta_secs() * SPEED;
 }
 
-#[derive(Event)]
+#[derive(Message)]
 struct BallSpawn {
     position: Vec3,
     velocity: Vec3,
@@ -209,11 +211,11 @@ struct BallSpawn {
 }
 
 fn spawn_ball(
-    mut events: EventReader<BallSpawn>,
+    mut messages: MessageReader<BallSpawn>,
     mut commands: Commands,
     ball_data: Res<BallData>,
 ) {
-    for spawn in events.read() {
+    for spawn in messages.read() {
         commands.spawn((
             Transform::from_translation(spawn.position),
             Mesh3d(ball_data.mesh()),
@@ -226,12 +228,12 @@ fn spawn_ball(
 fn shoot_ball(
     inputs: Res<ButtonInput<MouseButton>>,
     player: Single<&Transform, With<Player>>,
-    mut spawner: EventWriter<BallSpawn>,
-    window: Single<&Window, With<PrimaryWindow>>,
+    mut spawner: MessageWriter<BallSpawn>,
     mut power: ResMut<Power>,
     time: Res<Time>,
+    primary_cursor_options: Single<& CursorOptions, With<PrimaryWindow>>
 ) {
-    if window.cursor_options.visible {
+    if primary_cursor_options.visible {
         return;
     }
 
@@ -269,7 +271,6 @@ impl BallData {
         self.mesh.clone()
     }
     fn material(&self) -> Handle<StandardMaterial> {
-        use rand::seq::SliceRandom;
         let mut rng = self.rng.lock().unwrap();
         self.materials.choose(&mut *rng).unwrap().clone()
     }
@@ -302,8 +303,8 @@ struct Velocity(Vec3);
 
 fn apply_velocity(mut objects: Query<(&mut Transform, &Velocity)>, time: Res<Time>) {
     for (mut transform, velocity) in &mut objects {
-        // use delta time because we set velocity outside of fixed update
-        // if we did not used delta time then anything touching velocity would need to make sure it is scaled correctly
+        // use delta time because we set velocity outside fixed update
+        // if we did not use delta time then anything touching velocity would need to make sure it is scaled correctly
         transform.translation += velocity.0 * time.delta_secs();
     }
 }
