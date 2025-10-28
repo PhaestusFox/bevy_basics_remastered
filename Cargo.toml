@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-bevy = "0.16"
+bevy = "0.17.2"
 rand = "*"
 
 [profile.dev.package."*"]
@@ -12,5 +12,5 @@ opt-level = 3
 
 [[example]]
 name = "ball fps"
-path = "examples/ball_fps"
+path = "examples/ball_fps.rs"
 doc-scrape-examples = true
